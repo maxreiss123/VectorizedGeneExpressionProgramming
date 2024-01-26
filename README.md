@@ -1,5 +1,5 @@
 # VectorizedGeneExpressionProgramming
-- This is a symbolic regression algorithm whereby Gene Expression Programming is a role model. (the operators changed - for experimental reasons)
+- This is a symbolic regression algorithm with Gene Expression Programming as a role model. (the operators changed - for experimental reasons)
 
 # Todo 
 - Inner approximation of the constants with perturbation and the application of the gene fusion operator
