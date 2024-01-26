@@ -224,10 +224,13 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
     @showprogress for epoch in 1:epochs
         for elem in population
             try
-                #println(elem.expression)
-                y_pred = elem.compiled_function()
-                elem.fitness = mean_squared_error(y_data, y_pred)
-            catch
+                if isnan(elem.fitness)
+                    #println(elem.expression)
+                    y_pred = elem.compiled_function()
+                    elem.fitness = mean_squared_error(y_data, y_pred)
+                end
+            catch e
+                showerror(stdout, e)
                 elem.fitness = 10e6
             end
         end
