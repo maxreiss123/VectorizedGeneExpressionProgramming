@@ -6,9 +6,8 @@
 - Vectorization cost evaluation
 - Vectorization genetic operators
 - Random application of genetic operators
-- Conversion to Julia - (Needs to be tested)
+- Conversion to Julia - (Needs to be tested/debugged)
 
 #Remarks
-- Time comparison between Julia and Python: Julia needs roughly 14s, while python needs 74s
 - Please add some comments
 
