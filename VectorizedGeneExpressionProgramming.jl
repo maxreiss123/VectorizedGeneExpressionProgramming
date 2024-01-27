@@ -4,6 +4,9 @@ using Plots
 using LinearAlgebra
 using ProgressMeter
 using OrderedCollections
+using SymPy
+using Base.Threads
+
 Random.seed!(0)
 
 function find_indices_with_sum(arr, target_sum, num_indices)
@@ -99,13 +102,9 @@ function compile_expression!(chromosome::Chromosome, data_vars::Dict)
         expression = _karva_raw(chromosome)
         temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
         expression_string = compile_to_function_string(temp, chromosome.toolbox.symbols)
-
-        # Create a function string with all data variables as arguments
-        args = join(["$(var) = $(data_vars[var])" for var in keys(data_vars)], ", ")
-        function_string = "($args) -> $expression_string"
-
-        # Compile and store the function
-        chromosome.compiled_function = eval(Meta.parse(function_string))
+        sympy_expr = sympify(expression_string)
+        var_symbols = [symbols(var) for var in keys(data_vars)]
+        chromosome.compiled_function = lambdify(sympy_expr, var_symbols)
         chromosome.expression = expression_string
     end
 end
@@ -208,34 +207,41 @@ function basic_tournament_selection(population, tournament_size, number_of_winne
     return selected
 end
 
+function compute_fitness(elem, data_vars, y_data)
+    try    
+        if isnan(elem.fitness)
+            var_values = [data_vars[var] for var in keys(data_vars)]
+            y_pred = elem.compiled_function(var_values...)
+            return mean_squared_error(y_data, y_pred)
+        else
+            return elem.fitness
+        end
+    catch
+        return 10e6
+    end
+
+end
+
 
 function run_genetic_algorithm(epochs, population_size, gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob)
     #Generate some data
     x_data = range(-1, stop=1, length=100)
     y_data = x_data.^3 + x_data.^2 + x_data .+ 4
-    data_set = Dict("x_0" => x_data)
-    for (var_name, value) in data_set
-        eval(Meta.parse("$var_name = $value"))
-    end
-    # Initialize toolbox and population
-    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob,data_set)
+    data_vars = Dict("x_0" => x_data)
+    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob,data_vars)
     population = generate_population(population_size, toolbox)
+    fitness_values = Vector{Float64}(undef, length(population))
     #Loop over the epochs 
     @showprogress for epoch in 1:epochs
-        for elem in population
-            try
-                if isnan(elem.fitness)
-                    #println(elem.expression)
-                    y_pred = elem.compiled_function()
-                    elem.fitness = mean_squared_error(y_data, y_pred)
-                end
-            catch e
-                showerror(stdout, e)
-                elem.fitness = 10e6
-            end
+        Threads.@threads for i in eachindex(population)
+            fitness_values[i] = compute_fitness(population[i], data_vars, y_data)
         end
+        
+        for (elem, fitness) in zip(population, fitness_values)
+            elem.fitness = fitness
+        end
+
         sort!(population, by = x -> x.fitness)
-        println(population[1].fitness)
         if epoch < epochs
             parents = basic_tournament_selection(population, 3, length(population) ÷ 2)
 
@@ -249,7 +255,6 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
                 push!(next_gen, child1)
                 push!(next_gen, child2)
             end
-
             population = vcat(sort(population, by = x -> x.fitness)[1:length(population) ÷ 2], next_gen)
         end
     end
@@ -260,5 +265,5 @@ end
 
 #Example Call
 #Lessons learned - we need to add a point and a whitespace into the string :D
-best_individual = run_genetic_algorithm(100, 1000, 2, 10, OrderedDict(" .+ " => 2, " .* " => 2, " .- " => 2, " ./ " => 2, "x_0" => 0, "2" => 0), [" .+ ", " .- "], 0.1, 0.1, 0.1)
+best_individual = run_genetic_algorithm(100, 1000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/ " => 2, "x_0" => 0, "2" => 0), ["+", "-"], 0.1, 0.1, 0.1)
 
