@@ -4,8 +4,8 @@ using Plots
 using LinearAlgebra
 using ProgressMeter
 using OrderedCollections
-using SymPy
 using Base.Threads
+using DynamicExpressions
 
 Random.seed!(0)
 
@@ -63,17 +63,17 @@ struct Toolbox
     headsyms::Vector{Int}
     tailsyms::Vector{Int}
     arrity_by_id::OrderedDict
-    data_vars::Dict
+    callbacks::Dict
     
     function Toolbox(gene_count::Int, head_len::Int, symbols::OrderedDict{String, Int64}, gene_connections::Vector{String}, mutation_prob::Float64, 
-        crossover_prob::Float64, fusion_prob::Float64, data_vars::Dict)
+        crossover_prob::Float64, fusion_prob::Float64, callbacks::Dict)
 	    char_to_id = OrderedDict(elem => index for (index, elem) in enumerate(keys(symbols)))
 	    id_to_char = OrderedDict(index => elem for (elem, index) in char_to_id)
 	    headsyms = [char_to_id[key] for (key, arity) in symbols if arity != 0]
 	    tailsyms = [char_to_id[key] for (key, arity) in symbols if arity < 1]
 	    arrity_by_id = OrderedDict(index => arity for ((_, arity), index) in zip(symbols, 1:length(symbols)))
 	    gene_connections_ids = [char_to_id[elem] for elem in gene_connections]
-	    new(gene_count, head_len, symbols, gene_connections_ids, mutation_prob, crossover_prob, fusion_prob, char_to_id, id_to_char, headsyms, tailsyms, arrity_by_id, data_vars)
+	    new(gene_count, head_len, symbols, gene_connections_ids, mutation_prob, crossover_prob, fusion_prob, char_to_id, id_to_char, headsyms, tailsyms, arrity_by_id, callbacks)
      end
 end
 
@@ -92,19 +92,20 @@ mutable struct Chromosome
         obj.toolbox = toolbox
         obj.expression = ""
         obj.compiled_function = function() end
-        compile_expression!(obj,toolbox.data_vars)
+        compile_expression!(obj)
         return obj
     end
 end
 
-function compile_expression!(chromosome::Chromosome, data_vars::Dict)
+function compile_expression!(chromosome::Chromosome)
     if chromosome.expression == ""
         expression = _karva_raw(chromosome)
         temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
-        expression_string = compile_to_function_string(temp, chromosome.toolbox.symbols)
-        sympy_expr = sympify(expression_string)
-        var_symbols = [symbols(var) for var in keys(data_vars)]
-        chromosome.compiled_function = lambdify(sympy_expr, var_symbols)
+        expression_string = compile_to_function_string(temp, chromosome.toolbox.symbols, chromosome.toolbox.callbacks,
+        chromosome.toolbox.features)
+        #sympy_expr = sympify(expression_string)
+        #var_symbols = [symbols(var) for var in keys(data_vars)]
+        #chromosome.compiled_function = lambdify(sympy_expr, var_symbols)
         chromosome.expression = expression_string
     end
 end
@@ -131,15 +132,6 @@ function _karva_raw(chromosome::Chromosome)
     end
     return vcat(rolled_indices...)
 end
-
-#Side note: the bang operator marks a change of the object
-#function compile_expression!(chromosome::Chromosome)
-#    if chromosome.expression == ""
-#        expression = _karva_raw(chromosome)
-#        temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
-#        chromosome.expression = compile_to_function_string(temp, chromosome.toolbox.symbols)
-#    end
-#end
 
 function generate_gene(headsyms, tailsyms, headlen)
     head = rand(1:max(maximum(headsyms), maximum(vcat(headsyms, tailsyms))), headlen)
@@ -224,22 +216,37 @@ end
 
 
 function run_genetic_algorithm(epochs, population_size, gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob)
+    #create a function dictionary
+    callbacks = Dict(
+            "-" => (-),
+            "/" => (/),
+            "*" => (*),
+            "+" => (+)
+    )
+    
     #Generate some data
     x_data = range(-1, stop=1, length=100)
     y_data = x_data.^3 + x_data.^2 + x_data .+ 4
     data_vars = Dict("x_0" => x_data)
-    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob,data_vars)
+    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob,callbacks)
     population = generate_population(population_size, toolbox)
     fitness_values = Vector{Float64}(undef, length(population))
+
+
+    
+    #defining the operators
+    operators =  OperatorEnum(; binary_operators=[+, -, *, /])
+    #defining a node ffeatur
+    x1 = Node(; feature=1)
     #Loop over the epochs 
     @showprogress for epoch in 1:epochs
-        Threads.@threads for i in eachindex(population)
-            fitness_values[i] = compute_fitness(population[i], data_vars, y_data)
-        end
+        #Threads.@threads for i in eachindex(population)
+        #    fitness_values[i] = compute_fitness(population[i], data_vars, y_data)
+        #end
         
-        for (elem, fitness) in zip(population, fitness_values)
-            elem.fitness = fitness
-        end
+        #for (elem, fitness) in zip(population, fitness_values)
+        #    elem.fitness = fitness
+        #end
 
         sort!(population, by = x -> x.fitness)
         if epoch < epochs
