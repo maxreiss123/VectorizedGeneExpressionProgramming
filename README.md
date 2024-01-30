@@ -7,6 +7,8 @@
 - Vectorization genetic operators
 - Random application of genetic operators
 - Conversion to Julia - (Needs to be tested/debugged)
+- Implementing of learnable weights for the genetic operators
+- Implementation of an attention-based mutation operator
 
 #Remarks
 - Please add some comments
