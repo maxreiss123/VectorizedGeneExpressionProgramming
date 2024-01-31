@@ -6,6 +6,8 @@ using ProgressMeter
 using OrderedCollections
 using Base.Threads
 using DynamicExpressions
+using Logging
+Logging.disable_logging(Logging.Info)
 
 Random.seed!(0)
 
@@ -50,6 +52,27 @@ function compile_to_function_string(rek_string, arity_map)
     return last(stack)
 end
 
+#more consistent since we do not need string circumvending for sqr :)
+function compile_to_cranmer_datatype(rek_string, arity_map, callbacks::Dict, nodes::Dict)
+    stack = []
+    for elem in reverse(rek_string)
+        if get(arity_map, elem, 0) == 2
+            op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+            op2 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+            ops = callbacks[elem]
+            push!(stack, ops(op1,op2))
+        elseif get(arity_map, elem, 0) == 1
+            op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+            ops = callbacks[elem]
+            push!(stack, ops(op1))
+        else
+            push!(stack, elem)
+        end
+    end
+    return last(stack)
+end
+
+
 struct Toolbox
     gene_count::Int
     head_len::Int
@@ -64,26 +87,28 @@ struct Toolbox
     tailsyms::Vector{Int}
     arrity_by_id::OrderedDict
     callbacks::Dict
+    nodes::Dict
     
     function Toolbox(gene_count::Int, head_len::Int, symbols::OrderedDict{String, Int64}, gene_connections::Vector{String}, mutation_prob::Float64, 
-        crossover_prob::Float64, fusion_prob::Float64, callbacks::Dict)
+        crossover_prob::Float64, fusion_prob::Float64, callbacks::Dict, nodes::Dict)
 	    char_to_id = OrderedDict(elem => index for (index, elem) in enumerate(keys(symbols)))
 	    id_to_char = OrderedDict(index => elem for (elem, index) in char_to_id)
 	    headsyms = [char_to_id[key] for (key, arity) in symbols if arity != 0]
 	    tailsyms = [char_to_id[key] for (key, arity) in symbols if arity < 1]
 	    arrity_by_id = OrderedDict(index => arity for ((_, arity), index) in zip(symbols, 1:length(symbols)))
 	    gene_connections_ids = [char_to_id[elem] for elem in gene_connections]
-	    new(gene_count, head_len, symbols, gene_connections_ids, mutation_prob, crossover_prob, fusion_prob, char_to_id, id_to_char, headsyms, tailsyms, arrity_by_id, callbacks)
+	    new(gene_count, head_len, symbols, gene_connections_ids, mutation_prob, crossover_prob, fusion_prob, char_to_id, id_to_char, headsyms, tailsyms, arrity_by_id, 
+        callbacks, nodes)
      end
 end
 
 
 mutable struct Chromosome
     genes::Vector{Int}
-    fitness::Float64
+    fitness::Float32
     toolbox::Toolbox
     expression::String
-    compiled_function::Function
+    compiled_function::Any
 
     function Chromosome(genes::Vector{Int}, toolbox::Toolbox)
         obj = new()
@@ -91,7 +116,6 @@ mutable struct Chromosome
         obj.fitness = NaN
         obj.toolbox = toolbox
         obj.expression = ""
-        obj.compiled_function = function() end
         compile_expression!(obj)
         return obj
     end
@@ -101,12 +125,9 @@ function compile_expression!(chromosome::Chromosome)
     if chromosome.expression == ""
         expression = _karva_raw(chromosome)
         temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
-        expression_string = compile_to_function_string(temp, chromosome.toolbox.symbols, chromosome.toolbox.callbacks,
-        chromosome.toolbox.features)
-        #sympy_expr = sympify(expression_string)
-        #var_symbols = [symbols(var) for var in keys(data_vars)]
-        #chromosome.compiled_function = lambdify(sympy_expr, var_symbols)
-        chromosome.expression = expression_string
+        expression_tree = compile_to_cranmer_datatype(temp, chromosome.toolbox.symbols, chromosome.toolbox.callbacks,
+        chromosome.toolbox.nodes)
+        chromosome.compiled_function = expression_tree
     end
 end
 
@@ -125,7 +146,7 @@ function _karva_raw(chromosome::Chromosome)
     arity_gene_ = map(x -> chromosome.toolbox.arrity_by_id[x], genes)
     arity_gene_[2:end] .-= 1
     rolled_indices = [connectionsym]
-    for i in 1:gene_len:length(arity_gene_) - gene_len
+    for i in 1:gene_len:length(arity_gene_) - gene_len-1
         window = arity_gene_[i:i + gene_len-1]
         indices = find_indices_with_sum(window, 0, 1)
         append!(rolled_indices, [genes[i:i + first(indices)]])
@@ -199,11 +220,10 @@ function basic_tournament_selection(population, tournament_size, number_of_winne
     return selected
 end
 
-function compute_fitness(elem, data_vars, y_data)
+function compute_fitness(elem, operators, x_data, y_data)
     try    
         if isnan(elem.fitness)
-            var_values = [data_vars[var] for var in keys(data_vars)]
-            y_pred = elem.compiled_function(var_values...)
+            y_pred = elem.compiled_function(x_data, operators)
             return mean_squared_error(y_data, y_pred)
         else
             return elem.fitness
@@ -217,36 +237,33 @@ end
 
 function run_genetic_algorithm(epochs, population_size, gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob)
     #create a function dictionary
+    operators =  OperatorEnum(; binary_operators=[+, -, *, /])
     callbacks = Dict(
             "-" => (-),
             "/" => (/),
             "*" => (*),
             "+" => (+)
     )
-    
+    nodes = Dict(
+        "x_0" => Node(; feature=1),
+        "2" => 2
+    )
+     
     #Generate some data
-    x_data = range(-1, stop=1, length=100)
+    x_data = randn(Float32, 1, 200)
     y_data = x_data.^3 + x_data.^2 + x_data .+ 4
-    data_vars = Dict("x_0" => x_data)
-    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob,callbacks)
+    toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, 
+    fusion_prob,callbacks, nodes)
     population = generate_population(population_size, toolbox)
-    fitness_values = Vector{Float64}(undef, length(population))
-
-
-    
-    #defining the operators
-    operators =  OperatorEnum(; binary_operators=[+, -, *, /])
-    #defining a node ffeatur
-    x1 = Node(; feature=1)
-    #Loop over the epochs 
+    fitness_values = Vector{Float32}(undef, length(population))
     @showprogress for epoch in 1:epochs
-        #Threads.@threads for i in eachindex(population)
-        #    fitness_values[i] = compute_fitness(population[i], data_vars, y_data)
-        #end
+        Threads.@threads for i in eachindex(population)
+            fitness_values[i] = compute_fitness(population[i], operators, x_data, y_data)
+        end
         
-        #for (elem, fitness) in zip(population, fitness_values)
-        #    elem.fitness = fitness
-        #end
+        for (elem, fitness) in zip(population, fitness_values)
+            elem.fitness = fitness
+        end
 
         sort!(population, by = x -> x.fitness)
         if epoch < epochs
@@ -272,5 +289,5 @@ end
 
 #Example Call
 #Lessons learned - we need to add a point and a whitespace into the string :D
-best_individual = run_genetic_algorithm(100, 1000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/ " => 2, "x_0" => 0, "2" => 0), ["+", "-"], 0.1, 0.1, 0.1)
+best_individual = run_genetic_algorithm(1000, 1000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0), ["+", "-"], 0.1, 0.1, 0.1)
 
