@@ -11,6 +11,7 @@
 - Conversion to Julia - (Needs to be tested/debugged)
 - Implementing of learnable weights for the genetic operators
 - Implementation of an attention-based mutation operator
+- Automatic gene-len scaling
 
 #Remarks
 - Please add some comments
