@@ -2,6 +2,7 @@
 - This is a symbolic regression algorithm with Gene Expression Programming as a role model. (the operators changed - for experimental reasons)
 - At a certain amount of expression, the list iterations within the genetic operators produce a lot of computational overhead
 - Here, we project these into a vector space and use simple vector operations
+- Velocity check: 1000 for 1000 epochs:  approx 4:30m python, 0:48m julia  
 
 # Todo 
 - Inner approximation of the constants with perturbation and the application of the gene fusion operator
