@@ -1,7 +1,11 @@
-# VectorizedGeneExpressionProgramming
-- This is a symbolic regression algorithm with Gene Expression Programming as a role model. (the operators changed - for experimental reasons)
-- At a certain amount of expression, the list iterations within the genetic operators produce a lot of computational overhead
-- Here, we project these into a vector space and use simple vector operations
+# VectorizedGeneExpressionProgramming for symbolic regression
+Dealing with high-dimensional data often causes evolutionary methods to struggle. Due to modern computational power, a simple first step increases hyperparameters, such as the population size or the number of epochs. 
+
+At a certain point, the algorithm faces a high workload caused by the internal representation of the objects. Object-orientated data structures allow a highly readable and logical structure. Still, when it comes to a considerable number of replication procedures by utilizing genetic operators, the overhead of computational time and memory allocations becomes non-negligible. 
+
+Within that version, we tokenize the symbols and achieve a genotype representation where arithmetic operations can be applied easily. The given repo implements two versions, one in Julia and one in Python, whereby the Gene-Expression-Programming[1] serves as a role model. 
+
+
 - Velocity check: 200.000 datapoints, 1000 candidate solutions, mating size 0.4, four threads
   - Julia: 69s
   - Python: 635s
