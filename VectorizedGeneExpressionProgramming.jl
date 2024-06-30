@@ -5,7 +5,7 @@ using ProgressMeter
 using OrderedCollections
 using DynamicExpressions
 using Logging
-include("ErrorFunctions.jl")
+#include("ErrorFunctions.jl")
 
 Logging.disable_logging(Logging.Info)
 Random.seed!(0)
@@ -300,6 +300,17 @@ function basic_tournament_selection(population, tournament_size, number_of_winne
     end
     return selected
 end
+
+function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+
+  d::Float64 = 0.0
+  @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
+        temp = (y_true[i]-y_pred[i])
+        d += temp*temp
+  end
+  return d/length(y_true)
+end
+
 
 function compute_fitness(elem, operators, x_data, y_data)
     try    
