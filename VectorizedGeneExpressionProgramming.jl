@@ -1,15 +1,15 @@
 using Random
 using Statistics
-using Plots
 using LinearAlgebra
 using ProgressMeter
 using OrderedCollections
-using Base.Threads
 using DynamicExpressions
 using Logging
-Logging.disable_logging(Logging.Info)
+include("ErrorFunctions.jl")
 
+Logging.disable_logging(Logging.Info)
 Random.seed!(0)
+
 
 function find_indices_with_sum(arr, target_sum, num_indices)
     if arr[1] == -1
@@ -24,13 +24,6 @@ function find_indices_with_sum(arr, target_sum, num_indices)
     end
 end
 
-function mean_absolute_error(y_true, y_pred)
-    return sum(abs.(y_pred-y_true))/length(y_true)
-end
-
-function mean_squared_error(y_true, y_pred)
-    return sum((y_true.-y_pred).^2)/length(y_true)
-end
 
 function compile_to_function_string(rek_string, arity_map)
     stack = []
@@ -52,23 +45,27 @@ function compile_to_function_string(rek_string, arity_map)
     return last(stack)
 end
 
-#more consistent since we do not need string circumvending for sqr :)
 function compile_to_cranmer_datatype(rek_string, arity_map, callbacks::Dict, nodes::Dict)
     stack = []
-    for elem in reverse(rek_string)
-        if get(arity_map, elem, 0) == 2
-            op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-            op2 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-            ops = callbacks[elem]
-            push!(stack, ops(op1,op2))
-        elseif get(arity_map, elem, 0) == 1
-            op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-            ops = callbacks[elem]
-            push!(stack, ops(op1))
-        else
-            push!(stack, elem)
+    try
+        for elem in reverse(rek_string)
+            if get(arity_map, elem, 0) == 2
+                op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+                op2 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+                ops = callbacks[elem]
+                push!(stack, ops(op1,op2))
+            elseif get(arity_map, elem, 0) == 1
+                op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
+                ops = callbacks[elem]
+                push!(stack, ops(op1))
+            else
+                push!(stack, elem)
+            end
         end
+    catch
+        print(rek_string)
     end
+
     return last(stack)
 end
 
@@ -110,13 +107,15 @@ mutable struct Chromosome
     expression::String
     compiled_function::Any
 
-    function Chromosome(genes::Vector{Int}, toolbox::Toolbox)
+    function Chromosome(genes::Vector{Int}, toolbox::Toolbox, compile::Bool=false)
         obj = new()
         obj.genes = genes
         obj.fitness = NaN
         obj.toolbox = toolbox
         obj.expression = ""
-        compile_expression!(obj)
+        if compile
+            compile_expression!(obj)
+        end
         return obj
     end
 end
@@ -144,10 +143,10 @@ function _karva_raw(chromosome::Chromosome)
     connectionsym = chromosome.genes[1:(chromosome.toolbox.gene_count - 1)]
     genes = chromosome.genes[(chromosome.toolbox.gene_count):end]
     arity_gene_ = map(x -> chromosome.toolbox.arrity_by_id[x], genes)
-    arity_gene_[2:end] .-= 1
     rolled_indices = [connectionsym]
-    for i in 1:gene_len:length(arity_gene_) - gene_len-1
-        window = arity_gene_[i:i + gene_len-1]
+    for i in 1:gene_len:length(arity_gene_) - gene_len
+        window = arity_gene_[i:i + gene_len]
+        window[2:length(window)] .-=1
         indices = find_indices_with_sum(window, 0, 1)
         append!(rolled_indices, [genes[i:i + first(indices)]])
     end
@@ -164,7 +163,7 @@ end
 function generate_chromosome(toolbox::Toolbox)
     connectors = rand(1:maximum(toolbox.gene_connections), toolbox.gene_count - 1)
     genes = vcat([generate_gene(toolbox.headsyms, toolbox.tailsyms, toolbox.head_len) for _ in 1:toolbox.gene_count]...)
-    return Chromosome(vcat(connectors, genes), toolbox)
+    return Chromosome(vcat(connectors, genes), toolbox, true)
 end
 
 
@@ -182,12 +181,64 @@ function create_operator_masks(gene_seq_alpha, gene_seq_beta, pb=0.2)
     return alpha_operator, beta_operator
 end
 
+function create_operator_point_one_masks(gene_seq_alpha, gene_seq_beta, toolbox)
+    alpha_operator = zeros(Int, length(gene_seq_alpha))
+    beta_operator = zeros(Int, length(gene_seq_beta))
+    head_len = toolbox.head_len
+    gene_len = head_len * 2 + 1
+    
+    for i in 0:(toolbox.gene_count - 1)
+        ref = i * gene_len + 1
+        mid = ref + gene_len ÷ 2  
+
+        point1 = rand(ref:mid)
+        point2 = rand((mid + 1):(ref + gene_len - 1))
+        alpha_operator[point1:point2] .= 1
+        
+        point1 = rand(ref:mid)
+        point2 = rand((mid + 1):(ref + gene_len - 1))
+        beta_operator[point1:point2] .= 1
+    end
+    
+    return alpha_operator, beta_operator
+end
+
+function create_operator_point_two_masks(gene_seq_alpha, gene_seq_beta, toolbox)
+    alpha_operator = zeros(Int, length(gene_seq_alpha))
+    beta_operator = zeros(Int, length(gene_seq_beta))
+    head_len = toolbox.head_len
+    gene_len = head_len * 2 + 1
+
+    for i in 0:(toolbox.gene_count - 1)
+        start = i * gene_len + 1
+        quarter = start + gene_len ÷ 4
+        half = start + gene_len ÷ 2
+        end_gene = start + gene_len - 1
+
+
+        point1 = rand(start:quarter)
+        point2 = rand(quarter+1:half)
+        point3 = rand(half+1:end_gene)
+        alpha_operator[point1:point2] .= 1
+        alpha_operator[point3:end_gene] .= 1
+
+
+        point1 = rand(start:end_gene)
+        point2 = rand(point1:end_gene)
+        beta_operator[point1:point2] .= 1
+        beta_operator[point2+1:end_gene] .= 1
+    end
+
+    return alpha_operator, beta_operator
+end
+
+
 function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
-    child_1 = Chromosome([alpha_operator[i] == 1 ? max(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)], chromosome1.toolbox)
-    child_2 = Chromosome([beta_operator[i] == 1 ? max(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)], chromosome1.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? max(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? max(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)]...), chromosome1.toolbox)
     return child_1, child_2
 end
 
@@ -196,8 +247,8 @@ function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
-    child_1 = Chromosome([alpha_operator[i] == 1 ? min(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)], chromosome1.toolbox)
-    child_2 = Chromosome([beta_operator[i] == 1 ? min(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)], chromosome1.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? min(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? min(gene_seq_alpha[i], gene_seq_beta[i]) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)]...), chromosome1.toolbox)
     return child_1, child_2
 end
 
@@ -205,10 +256,40 @@ function gene_fussion(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
-    child_1 = Chromosome([alpha_operator[i] == 1 ? div(gene_seq_alpha[i] + gene_seq_beta[i], 2) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)], chromosome1.toolbox)
-    child_2 = Chromosome([beta_operator[i] == 1 ? div(gene_seq_alpha[i] + gene_seq_beta[i], 2) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)], chromosome1.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? div(gene_seq_alpha[i] + gene_seq_beta[i], 2) : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? div(gene_seq_alpha[i] + gene_seq_beta[i], 2) : gene_seq_beta[i] for i in 1:length(gene_seq_beta)]...), chromosome1.toolbox)
     return child_1, child_2
 end
+
+function gene_one_point_cross_over(chromosome1::Chromosome, chromosome2::Chromosome)
+    gene_seq_alpha = chromosome1.genes
+    gene_seq_beta = chromosome2.genes
+    alpha_operator, beta_operator = create_operator_point_one_masks(gene_seq_alpha, gene_seq_beta, chromosome1.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? gene_seq_alpha[i] : gene_seq_beta[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? gene_seq_beta[i] : gene_seq_alpha[i] for i in 1:length(gene_seq_beta)]...), chromosome1.toolbox)
+    return child_1, child_2
+end
+
+function gene_two_point_cross_over(chromosome1::Chromosome, chromosome2::Chromosome)
+    gene_seq_alpha = chromosome1.genes
+    gene_seq_beta = chromosome2.genes
+    alpha_operator, beta_operator = create_operator_point_two_masks(gene_seq_alpha, gene_seq_beta, chromosome1.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? gene_seq_alpha[i] : gene_seq_beta[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? gene_seq_beta[i] : gene_seq_alpha[i] for i in 1:length(gene_seq_beta)]...), chromosome1.toolbox)
+    return child_1, child_2
+end
+
+function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
+    gene_seq_alpha = chromosome1.genes
+    alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_alpha, pb)
+    mutation_seq_1  = generate_chromosome(chromosome1.toolbox)
+    mutation_seq_2  = generate_chromosome(chromosome2.toolbox)
+    child_1 = Chromosome(vcat([alpha_operator[i] == 1 ? mutation_seq_1.genes[i] : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)]...), chromosome1.toolbox)
+    child_2 = Chromosome(vcat([beta_operator[i] == 1 ? mutation_seq_2.genes[i] : gene_seq_alpha[i] for i in 1:length(gene_seq_alpha)]...), chromosome2.toolbox)
+    return child_1, child_2
+end
+
+
 
 function basic_tournament_selection(population, tournament_size, number_of_winners)
     selected = []
@@ -231,9 +312,34 @@ function compute_fitness(elem, operators, x_data, y_data)
     catch
         return 10e6
     end
-
 end
 
+
+function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::Toolbox)
+    child1, child2 = parent1, parent2
+
+    if rand() < toolbox.mutation_prob
+        child1, child2 = gene_mutation(child1, child2)
+    end
+
+    if rand() < toolbox.fusion_prob
+        child1, child2 = gene_dominant_fusion(child1, child2)
+    end
+    if rand() < toolbox.fusion_prob
+        child1, child2 = gen_rezessiv(child1, child2)
+    end
+    if rand() < toolbox.fusion_prob
+        child1, child2 = gene_fussion(child1, child2)
+    end
+    if rand() < toolbox.crossover_prob
+        child1, child2 = gene_one_point_cross_over(child1, child2)
+    end
+    if rand() < toolbox.crossover_prob
+        child1, child2 = gene_two_point_cross_over(child1, child2)
+    end
+
+    return child1, child2
+end
 
 function run_genetic_algorithm(epochs, population_size, gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob)
     #create a function dictionary
@@ -246,40 +352,46 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
     )
     nodes = Dict(
         "x_0" => Node(; feature=1),
-        "2" => 2
+        "2" => 2,
+        "0" => 0
     )
      
     #Generate some data
-    x_data = randn(Float32, 1, 200)
+    x_data = randn(Float32, 1, 20000)
     y_data = x_data.^3 + x_data.^2 + x_data .+ 4
+    mating_size = Int(ceil(population_size*0.4))
+    
     toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, 
     fusion_prob,callbacks, nodes)
     population = generate_population(population_size, toolbox)
-    fitness_values = Vector{Float32}(undef, length(population))
+    
     @showprogress for epoch in 1:epochs
         Threads.@threads for i in eachindex(population)
-            fitness_values[i] = compute_fitness(population[i], operators, x_data, y_data)
+            if isnan(population[i].fitness)
+                population[i].fitness = compute_fitness(population[i], operators, x_data, y_data)
+            end
         end
         
-        for (elem, fitness) in zip(population, fitness_values)
-            elem.fitness = fitness
-        end
 
         sort!(population, by = x -> x.fitness)
         if epoch < epochs
-            parents = basic_tournament_selection(population, 3, length(population) ÷ 2)
+            parents = basic_tournament_selection(population, 3, mating_size)
 
-            next_gen = []
-            for i in 1:2:length(parents) - 1
+            next_gen = Vector{eltype(population)}(undef, length(parents))
+            Threads.@threads for i in 1:2:length(parents) - 1
                 parent1 = parents[i]
                 parent2 = parents[i + 1]
-                child1, child2 = gene_dominant_fusion(parent1, parent2)
-                child1, child2 = gen_rezessiv(child1, child2)
-                child1, child2 = gene_fussion(child1, child2)
-                push!(next_gen, child1)
-                push!(next_gen, child2)
+                #we compile after the last one!
+                child1, child2 = genetic_operations(parent1, parent2, toolbox)
+                
+                compile_expression!(child1)
+                compile_expression!(child2)
+                
+                next_gen[i] = child1
+                next_gen[i+1] = child2
             end
-            population = vcat(sort(population, by = x -> x.fitness)[1:length(population) ÷ 2], next_gen)
+            population = vcat(sort(population, by = x -> x.fitness)[1:mating_size], next_gen)
+            #print(println(population[1].fitness))
         end
     end
     println(population[1].fitness)
@@ -289,5 +401,6 @@ end
 
 #Example Call
 #Lessons learned - we need to add a point and a whitespace into the string :D
-best_individual = run_genetic_algorithm(1000, 1000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0), ["+", "-"], 0.1, 0.1, 0.1)
+best_individual = run_genetic_algorithm(1000, 10000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0), 
+["+", "*"], 0.1, 0.1, 0.1)
 
