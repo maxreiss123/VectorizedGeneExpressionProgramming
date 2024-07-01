@@ -153,13 +153,14 @@ function _karva_raw(chromosome::Chromosome)
     return vcat(rolled_indices...)
 end
 
+#TODO: optimize
 function generate_gene(headsyms, tailsyms, headlen)
     head = rand(1:max(maximum(headsyms), maximum(vcat(headsyms, tailsyms))), headlen)
     tail = rand(maximum(headsyms)+1:maximum(tailsyms), 2 * headlen + 1)
     return vcat(head, tail)
 end
 
-
+#TODO: optimize
 function generate_chromosome(toolbox::Toolbox)
     connectors = rand(1:maximum(toolbox.gene_connections), toolbox.gene_count - 1)
     genes = vcat([generate_gene(toolbox.headsyms, toolbox.tailsyms, toolbox.head_len) for _ in 1:toolbox.gene_count]...)
