@@ -10,7 +10,13 @@ Within that version, we tokenize the symbols and achieve a genotype representati
   - Julia: 69s
   - Python: 635s
  
-- Amount of datapoints tested without issues - time scales linear
+- Amount of data points tested without issues - time scales linear
+  - 1e5
+  - 1e6
+  - 1e7
+
+- Amount of candidate solutions (population size) without issues
+  - 1e4
   - 1e5
   - 1e6
   - 1e7
