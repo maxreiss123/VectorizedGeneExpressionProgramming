@@ -45,7 +45,7 @@ function compile_to_function_string(rek_string, arity_map)
     return last(stack)
 end
 
-function compile_to_cranmer_datatype(rek_string, arity_map, callbacks::Dict, nodes::Dict)
+function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::Dict)
     stack = []
     try
         for elem in reverse(rek_string)
@@ -154,7 +154,7 @@ function _karva_raw(chromosome::Chromosome)
 end
 
 #TODO: optimize
-function generate_gene(headsyms, tailsyms, headlen)
+function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
     head = rand(1:max(maximum(headsyms), maximum(vcat(headsyms, tailsyms))), headlen)
     tail = rand(maximum(headsyms)+1:maximum(tailsyms), 2 * headlen + 1)
     return vcat(head, tail)
@@ -168,7 +168,7 @@ function generate_chromosome(toolbox::Toolbox)
 end
 
 
-function generate_population(number, toolbox::Toolbox)
+function generate_population(number::Int, toolbox::Toolbox)
   population = Vector{Chromosome}(undef,number)
   Threads.@threads for i in 1:number
         @inbounds population[i] = generate_chromosome(toolbox)
@@ -239,7 +239,7 @@ function create_operator_point_two_masks(gene_seq_alpha, gene_seq_beta, toolbox)
 end
 
 
-function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
+function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -249,7 +249,7 @@ function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, 
 end
 
 
-function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
+function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -258,7 +258,7 @@ function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
     return child_1, child_2
 end
 
-function gene_fussion(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
+function gene_fussion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -285,7 +285,7 @@ function gene_two_point_cross_over(chromosome1::Chromosome, chromosome2::Chromos
     return child_1, child_2
 end
 
-function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb=0.2)
+function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
     gene_seq_alpha = chromosome1.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_alpha, pb)
     mutation_seq_1  = generate_chromosome(chromosome1.toolbox)
@@ -297,7 +297,7 @@ end
 
 
 
-function basic_tournament_selection(population, tournament_size, number_of_winners)
+function basic_tournament_selection(population::Vector{Chromosome}, tournament_size::Int, number_of_winners::Int)
     selected = []
     for _ in 1:number_of_winners
         contenders = rand(population, tournament_size)
@@ -318,7 +318,7 @@ function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) 
 end
 
 
-function compute_fitness(elem, operators, x_data, y_data)
+function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
     try    
         if isnan(elem.fitness)
             y_pred = elem.compiled_function(x_data, operators)
@@ -358,26 +358,25 @@ function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::T
     return child1, child2
 end
 
-function run_genetic_algorithm(epochs, population_size, gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, fusion_prob)
+function run_GEP(epochs::Int, 
+    population_size::Int, 
+    gene_count::Int, 
+    head_len::Int, 
+    symbols::OrderedDict,
+    operators::OperatorEnum,
+    callbacks::Dict,
+    nodes::Dict,
+    x_data::AbstractArray{T},
+    y_data::AbstractArray{T},
+    gene_connections::Vector{String}, 
+    mutation_prob::Float64=0.05, 
+    crossover_prob::Float64=0.2, 
+    fusion_prob::Float64=0.1,
+    mating_::Float64=0.5,
+    epsilon::Float64=1e-14) where T<:Real
     #create a function dictionary
-    operators =  OperatorEnum(; binary_operators=[+, -, *, /])
-    callbacks = Dict(
-            "-" => (-),
-            "/" => (/),
-            "*" => (*),
-            "+" => (+)
-    )
-    nodes = Dict(
-        "x_0" => Node(; feature=1),
-        "2" => 2,
-        "0" => 0
-    )
-     
-    #Generate some data
-    x_data = randn(Float32, 1, 20000)
-    y_data = x_data.^3 + x_data.^2 + x_data .+ 4
-    mating_size = Int(ceil(population_size*0.4))
-    
+
+    mating_size = Int(ceil(population_size*mating_))
     toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, 
     fusion_prob,callbacks, nodes)
     population = generate_population(population_size, toolbox)
@@ -398,7 +397,6 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
             Threads.@threads for i in 1:2:length(parents) - 1
                 parent1 = parents[i]
                 parent2 = parents[i + 1]
-                #we compile after the last one!
                 child1, child2 = genetic_operations(parent1, parent2, toolbox)
                 
                 compile_expression!(child1)
@@ -408,7 +406,11 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
                 next_gen[i+1] = child2
             end
             population = vcat(sort(population, by = x -> x.fitness)[1:mating_size], next_gen)
-            #print(println(population[1].fitness))
+            if population[1].fitness<epsilon
+                break
+            end
+            #print(println())
+        
         end
     end
     println(population[1].fitness)
@@ -417,7 +419,33 @@ function run_genetic_algorithm(epochs, population_size, gene_count, head_len, sy
 end
 
 #Example Call
-#Lessons learned - we need to add a point and a whitespace into the string :D
-best_individual = run_genetic_algorithm(1000, 10000, 2, 10, OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0), 
-["+", "*"], 0.1, 0.1, 0.1)
+#Define utilized syms as Ordered Dict: Symbol:Arity
+utilized_syms = OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0)
 
+#Create connection between genes 
+connection_syms = ["+", "*"]
+
+#Define all the elements for the dynamic.jl
+operators =  OperatorEnum(; binary_operators=[+, -, *, /])
+
+callbacks = Dict(
+        "-" => (-),
+        "/" => (/),
+        "*" => (*),
+        "+" => (+)
+)
+nodes = Dict(
+    "x_0" => Node(; feature=1),
+    "2" => 2,
+    "0" => 0
+)
+ 
+
+#Generate some data
+x_data = randn(Float32, 1, 20000)
+y_data = x_data.^3 + x_data.^2 + x_data .+ 4
+
+#call the function -> return value yields the best:
+
+
+best=run_GEP(1000,1000,4,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
