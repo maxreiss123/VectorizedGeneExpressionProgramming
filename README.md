@@ -9,6 +9,11 @@ Within that version, we tokenize the symbols and achieve a genotype representati
 - Velocity check: 200.000 datapoints, 1000 candidate solutions, mating size 0.4, four threads
   - Julia: 69s
   - Python: 635s
+ 
+- Amount of datapoints tested without issues - time scales linear
+  - 1e5
+  - 1e6
+  - 1e7
 
 # Todo 
 - Inner approximation of the constants with perturbation and the application of the gene fusion operator
