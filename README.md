@@ -18,8 +18,8 @@ Within that version, we tokenize the symbols and achieve a genotype representati
 - Amount of candidate solutions (population size) without issues
   - 1e4
   - 1e5
-  - 1e6
-  - 1e7
+  - 1e6 -> Remark: initialization takes a while
+  - 1e7 -> Remark: initialization takes a while
 
 # Todo 
 - Inner approximation of the constants with perturbation and the application of the gene fusion operator
