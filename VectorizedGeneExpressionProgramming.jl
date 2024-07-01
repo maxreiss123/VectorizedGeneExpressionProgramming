@@ -144,7 +144,7 @@ function _karva_raw(chromosome::Chromosome)
     genes = chromosome.genes[(chromosome.toolbox.gene_count):end]
     arity_gene_ = map(x -> chromosome.toolbox.arrity_by_id[x], genes)
     rolled_indices = [connectionsym]
-    for i in 1:gene_len:length(arity_gene_) - gene_len
+    for i in 1:(gene_len-1):length(arity_gene_)-gene_len-1
         window = arity_gene_[i:i + gene_len]
         window[2:length(window)] .-=1
         indices = find_indices_with_sum(window, 0, 1)
@@ -156,7 +156,7 @@ end
 #TODO: optimize
 function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
     head = rand(1:max(maximum(headsyms), maximum(vcat(headsyms, tailsyms))), headlen)
-    tail = rand(maximum(headsyms)+1:maximum(tailsyms), 2 * headlen + 1)
+    tail = rand(maximum(headsyms)+1:maximum(tailsyms), headlen + 1)
     return vcat(head, tail)
 end
 
@@ -369,10 +369,10 @@ function run_GEP(epochs::Int,
     x_data::AbstractArray{T},
     y_data::AbstractArray{T},
     gene_connections::Vector{String}, 
-    mutation_prob::Float64=0.05, 
-    crossover_prob::Float64=0.2, 
-    fusion_prob::Float64=0.1,
-    mating_::Float64=0.5,
+    mutation_prob::Float64=0.2, 
+    crossover_prob::Float64=0.3, 
+    fusion_prob::Float64=0.5,
+    mating_::Float64=0.6,
     epsilon::Float64=1e-14) where T<:Real
     #create a function dictionary
 
@@ -406,10 +406,10 @@ function run_GEP(epochs::Int,
                 next_gen[i+1] = child2
             end
             population = vcat(sort(population, by = x -> x.fitness)[1:mating_size], next_gen)
-            if population[1].fitness<epsilon
-                break
-            end
-            #print(println())
+        if population[1].fitness<epsilon
+            break
+        end
+        #print(println())
         
         end
     end
@@ -442,10 +442,10 @@ nodes = Dict(
  
 
 #Generate some data
-x_data = randn(Float32, 1, 20000)
+x_data = randn(Float32, 1, 2000)
 y_data = x_data.^3 + x_data.^2 + x_data .+ 4
 
 #call the function -> return value yields the best:
 
 
-best=run_GEP(1000,1000,4,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
+best=run_GEP(1000,10000,5,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
