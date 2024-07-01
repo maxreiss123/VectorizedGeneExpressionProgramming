@@ -168,8 +168,13 @@ end
 
 
 function generate_population(number, toolbox::Toolbox)
-    return [generate_chromosome(toolbox) for _ in 1:number]
+  population = Vector{Chromosome}(undef,number)
+  Threads.@threads for i in 1:number
+        @inbounds population[i] = generate_chromosome(toolbox)
+  end
+  return population
 end
+
 
 function create_operator_masks(gene_seq_alpha, gene_seq_beta, pb=0.2)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
