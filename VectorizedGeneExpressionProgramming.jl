@@ -18,7 +18,7 @@ function find_indices_with_sum(arr, target_sum, num_indices)
     cum_sum = cumsum(arr)
     indices = findall(x -> x == target_sum, cum_sum)
     if length(indices) >= num_indices
-        return indices[1:num_indices]
+	return indices[1:num_indices]
     else
         return [1]
     end
@@ -148,14 +148,14 @@ function _karva_raw(chromosome::Chromosome)
         window = arity_gene_[i:i + gene_len]
         window[2:length(window)] .-=1
         indices = find_indices_with_sum(window, 0, 1)
-        append!(rolled_indices, [genes[i:i + first(indices)]])
+        append!(rolled_indices, [genes[i:i + first(indices)-1]])
     end
     return vcat(rolled_indices...)
 end
 
 #TODO: optimize
 function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
-    head = rand(1:max(maximum(headsyms), maximum(vcat(headsyms, tailsyms))), headlen)
+    head = rand(1:max(maximum(headsyms)), headlen)
     tail = rand(maximum(headsyms)+1:maximum(tailsyms), headlen + 1)
     return vcat(head, tail)
 end
@@ -320,9 +320,9 @@ end
 
 function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
     try    
-        if isnan(elem.fitness)
-            y_pred = elem.compiled_function(x_data, operators)
-            return mean_squared_error(y_data, y_pred)
+        if isnan(elem.fitness)    
+	    y_pred = elem.compiled_function(x_data, operators)
+	    return mean_squared_error(y_data, y_pred)
         else
             return elem.fitness
         end
@@ -369,11 +369,11 @@ function run_GEP(epochs::Int,
     x_data::AbstractArray{T},
     y_data::AbstractArray{T},
     gene_connections::Vector{String}, 
-    mutation_prob::Float64=0.2, 
-    crossover_prob::Float64=0.3, 
-    fusion_prob::Float64=0.5,
-    mating_::Float64=0.6,
-    epsilon::Float64=1e-14) where T<:Real
+    mutation_prob::Float64=0.5, 
+    crossover_prob::Float64=0.4, 
+    fusion_prob::Float64=0.3,
+    mating_::Float64=0.5,
+    epsilon::Float64=1e-13) where T<:Real
     #create a function dictionary
 
     mating_size = Int(ceil(population_size*mating_))
@@ -420,7 +420,7 @@ end
 
 #Example Call
 #Define utilized syms as Ordered Dict: Symbol:Arity
-utilized_syms = OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0)
+utilized_syms = OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0, "x_1" => 0)
 
 #Create connection between genes 
 connection_syms = ["+", "*"]
@@ -436,16 +436,18 @@ callbacks = Dict(
 )
 nodes = Dict(
     "x_0" => Node(; feature=1),
+    "x_1" => Node(; feature=2),
     "2" => 2,
     "0" => 0
 )
  
 
 #Generate some data
-x_data = randn(Float32, 1, 2000)
-y_data = x_data.^3 + x_data.^2 + x_data .+ 4
+x_data = randn(Float32, 2, 1000)
+y_data = @. x_data[1,:] * x_data[1,:] + x_data[1,:] * x_data[2,:] - 2 * x_data[2,:] * x_data[2,:]
 
 #call the function -> return value yields the best:
 
 
-best=run_GEP(1000,10000,5,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
+best=run_GEP(1000,1000,4,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
+@show best
