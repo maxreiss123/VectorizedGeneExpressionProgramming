@@ -14,10 +14,10 @@ Logging.disable_logging(Logging.Info)
 export run_GEP
 
 
-function fast_sqrt_32(x::Float32)
+function fast_sqrt_32(x::Real)
     i = reinterpret(UInt32, x)
     i = 0x1fbd1df5 + (i >> 1)
-    return reinterpret(Float32, i)
+    return reinterpret(Real, i)
 end
 
 function find_indices_with_sum(arr, target_sum, num_indices)
@@ -71,8 +71,8 @@ function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict,
                 push!(stack, elem)
             end
         end
-    catch
-        print(rek_string)
+    catch e
+   	@error "An error occurred during function compile " exception=(e, catch_backtrace())
     end
 
     return last(stack)
@@ -84,9 +84,9 @@ struct Toolbox
     head_len::Int
     symbols::OrderedDict
     gene_connections::Vector{Int}
-    mutation_prob::Float64
-    crossover_prob::Float64
-    fusion_prob::Float64
+    mutation_prob::Real
+    crossover_prob::Real
+    fusion_prob::Real
     char_to_id::OrderedDict
     id_to_char::OrderedDict
     headsyms::Vector{Int}
@@ -95,8 +95,8 @@ struct Toolbox
     callbacks::Dict
     nodes::Dict
     
-    function Toolbox(gene_count::Int, head_len::Int, symbols::OrderedDict{String, Int64}, gene_connections::Vector{String}, mutation_prob::Float64, 
-        crossover_prob::Float64, fusion_prob::Float64, callbacks::Dict, nodes::Dict)
+    function Toolbox(gene_count::Int, head_len::Int, symbols::OrderedDict{String, Int64}, gene_connections::Vector{String}, mutation_prob::Real, 
+        crossover_prob::Real, fusion_prob::Real, callbacks::Dict, nodes::Dict)
 	    char_to_id = OrderedDict(elem => index for (index, elem) in enumerate(keys(symbols)))
 	    id_to_char = OrderedDict(index => elem for (elem, index) in char_to_id)
 	    headsyms = [char_to_id[key] for (key, arity) in symbols if arity != 0]
@@ -111,7 +111,7 @@ end
 
 mutable struct Chromosome
     genes::Vector{Int}
-    fitness::Float32
+    fitness::Real
     toolbox::Toolbox
     expression::String
     compiled_function::Any
@@ -143,7 +143,7 @@ function fitness(chromosome::Chromosome)
     return chromosome.fitness
 end
 
-function set_fitness!(chromosome::Chromosome, value::Float64)
+function set_fitness!(chromosome::Chromosome, value::Real)
     chromosome.fitness = value
 end
 
@@ -248,7 +248,7 @@ function create_operator_point_two_masks(gene_seq_alpha, gene_seq_beta, toolbox)
 end
 
 
-function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
+function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Real=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -258,7 +258,7 @@ function gene_dominant_fusion(chromosome1::Chromosome, chromosome2::Chromosome, 
 end
 
 
-function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
+function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb::Real=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -267,7 +267,7 @@ function gen_rezessiv(chromosome1::Chromosome, chromosome2::Chromosome, pb::Floa
     return child_1, child_2
 end
 
-function gene_fussion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
+function gene_fussion(chromosome1::Chromosome, chromosome2::Chromosome, pb::Real=0.2)
     gene_seq_alpha = chromosome1.genes
     gene_seq_beta = chromosome2.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_beta, pb)
@@ -294,7 +294,7 @@ function gene_two_point_cross_over(chromosome1::Chromosome, chromosome2::Chromos
     return child_1, child_2
 end
 
-function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb::Float64=0.2)
+function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb::Real=0.2)
     gene_seq_alpha = chromosome1.genes
     alpha_operator, beta_operator = create_operator_masks(gene_seq_alpha, gene_seq_alpha, pb)
     mutation_seq_1  = generate_chromosome(chromosome1.toolbox)
@@ -344,7 +344,8 @@ function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::Abst
         else
             return elem.fitness
         end
-    catch
+    catch e
+        #@error "Something went wrong in compute fitness" exception=(e, catch_backtrace())
         return 10e6
     end
 end
@@ -389,11 +390,11 @@ function run_GEP(epochs::Int,
     gene_connections::Vector{String};
     seed::Int=0,
     error_fun::String="mae", 
-    mutation_prob::Float64=0.5, 
-    crossover_prob::Float64=0.4, 
-    fusion_prob::Float64=0.3,
-    mating_::Float64=0.5,
-    epsilon::Float64=1e-13) where T<:Real
+    mutation_prob::Real=0.5, 
+    crossover_prob::Real=0.4, 
+    fusion_prob::Real=0.3,
+    mating_::Real=0.5,
+    epsilon::Real=1e-13) where T<:Real
 
 
     Random.seed!(seed)
