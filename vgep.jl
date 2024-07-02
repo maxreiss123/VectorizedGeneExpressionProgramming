@@ -10,8 +10,34 @@ using DynamicExpressions
 using Logging
 
 
+logger = SimpleLogger(open("error.log", "a"))
+global_logger(logger)
+
 Logging.disable_logging(Logging.Info)
 export run_GEP
+
+
+function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:Real
+    len_y = length(y_true)
+    y_mean = mean(y_true)
+    
+
+    ss_total::T = zero(T)
+    @inbounds @simd for i in 1:len_y
+	temp = y_true[i]-y_mean
+        ss_total += temp*temp
+    end
+
+    ss_residual::T = zero(T)
+    @inbounds @simd for i in 1:len_y
+	temp = y_true[i] - y_pred[i]
+	ss_residual += temp*temp
+    end
+    
+    r2 = 1.0 - (ss_residual / ss_total)
+    
+    return r2
+end
 
 
 function fast_sqrt_32(x::Real)
@@ -72,7 +98,7 @@ function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict,
             end
         end
     catch e
-   	@error "An error occurred during function compile " exception=(e, catch_backtrace())
+    	#@error "An error occurred during function compile "
     end
 
     return last(stack)
@@ -115,6 +141,7 @@ mutable struct Chromosome
     toolbox::Toolbox
     expression::String
     compiled_function::Any
+    fitness_r2::Real
 
     function Chromosome(genes::Vector{Int}, toolbox::Toolbox, compile::Bool=false)
         obj = new()
@@ -122,6 +149,7 @@ mutable struct Chromosome
         obj.fitness = NaN
         obj.toolbox = toolbox
         obj.expression = ""
+	obj.fitness_r2 = 0.0
         if compile
             compile_expression!(obj)
         end
@@ -346,9 +374,20 @@ function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::Abst
         end
     catch e
         #@error "Something went wrong in compute fitness" exception=(e, catch_backtrace())
-        return 10e6
+        return 10e32
     end
 end
+
+function compute_fitness_r2(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
+    try
+    	y_pred = elem.compiled_function(x_data, operators)
+       	return r2_score(y_data, y_pred)
+    catch e
+        #@error "Something went wrong in compute fitness" exception=(e, catch_backtrace())
+        return 0
+    end
+end
+
 
 
 function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::Toolbox)
@@ -434,7 +473,9 @@ function run_GEP(epochs::Int,
         
         end
     end
-    return sort(population, by = x -> x.fitness)[1]
+    best = sort(population, by = x -> x.fitness)[1]
+    best.fitness_r2 = compute_fitness_r2(best,operators, x_data, y_data)
+    return best 
 end
 
 end

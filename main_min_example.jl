@@ -37,4 +37,4 @@ y_data = @. x_data[1,:] * x_data[1,:] + x_data[1,:] * x_data[2,:] - 2 * x_data[2
 
 
 best=run_GEP(1000,1000,4,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
-@show best
+@show string(best.compiled_function)
