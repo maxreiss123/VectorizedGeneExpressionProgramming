@@ -1,3 +1,6 @@
+
+module vectorGEP 
+
 using Random
 using Statistics
 using LinearAlgebra
@@ -5,11 +8,17 @@ using ProgressMeter
 using OrderedCollections
 using DynamicExpressions
 using Logging
-#include("ErrorFunctions.jl")
+
 
 Logging.disable_logging(Logging.Info)
-Random.seed!(0)
+export run_GEP
 
+
+function fast_sqrt_32(x::Float32)
+    i = reinterpret(UInt32, x)
+    i = 0x1fbd1df5 + (i >> 1)
+    return reinterpret(Float32, i)
+end
 
 function find_indices_with_sum(arr, target_sum, num_indices)
     if arr[1] == -1
@@ -309,7 +318,7 @@ end
 
 function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
 
-  d::Float64 = 0.0
+  d::T = zero(T)
   @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
         temp = (y_true[i]-y_pred[i])
         d += temp*temp
@@ -317,12 +326,21 @@ function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) 
   return d/length(y_true)
 end
 
+function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+    d::T = zero(T)
+    @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
+          temp = (y_true[i]-y_pred[i])
+          d += temp*temp
+    end
+    return abs2(d/length(y_true))
+  end
+
 
 function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
     try    
         if isnan(elem.fitness)    
 	    y_pred = elem.compiled_function(x_data, operators)
-	    return mean_squared_error(y_data, y_pred)
+	    return root_mean_squared_error(y_data, y_pred)
         else
             return elem.fitness
         end
@@ -368,14 +386,17 @@ function run_GEP(epochs::Int,
     nodes::Dict,
     x_data::AbstractArray{T},
     y_data::AbstractArray{T},
-    gene_connections::Vector{String}, 
+    gene_connections::Vector{String};
+    seed::Int=0,
+    error_fun::String="mae", 
     mutation_prob::Float64=0.5, 
     crossover_prob::Float64=0.4, 
     fusion_prob::Float64=0.3,
     mating_::Float64=0.5,
     epsilon::Float64=1e-13) where T<:Real
-    #create a function dictionary
 
+
+    Random.seed!(seed)
     mating_size = Int(ceil(population_size*mating_))
     toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, 
     fusion_prob,callbacks, nodes)
@@ -409,45 +430,10 @@ function run_GEP(epochs::Int,
         if population[1].fitness<epsilon
             break
         end
-        #print(println())
         
         end
     end
-    println(population[1].fitness)
-    #Return the winner
     return sort(population, by = x -> x.fitness)[1]
 end
 
-#Example Call
-#Define utilized syms as Ordered Dict: Symbol:Arity
-utilized_syms = OrderedDict("+" => 2, "*" => 2, "-" => 2, "/" => 2, "x_0" => 0, "2" => 0, "0"=> 0, "x_1" => 0)
-
-#Create connection between genes 
-connection_syms = ["+", "*"]
-
-#Define all the elements for the dynamic.jl
-operators =  OperatorEnum(; binary_operators=[+, -, *, /])
-
-callbacks = Dict(
-        "-" => (-),
-        "/" => (/),
-        "*" => (*),
-        "+" => (+)
-)
-nodes = Dict(
-    "x_0" => Node(; feature=1),
-    "x_1" => Node(; feature=2),
-    "2" => 2,
-    "0" => 0
-)
- 
-
-#Generate some data
-x_data = randn(Float32, 2, 1000)
-y_data = @. x_data[1,:] * x_data[1,:] + x_data[1,:] * x_data[2,:] - 2 * x_data[2,:] * x_data[2,:]
-
-#call the function -> return value yields the best:
-
-
-best=run_GEP(1000,1000,4,10,utilized_syms,operators, callbacks, nodes, x_data,y_data, connection_syms)
-@show best
+end
