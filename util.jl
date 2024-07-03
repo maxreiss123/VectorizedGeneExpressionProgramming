@@ -1,6 +1,10 @@
 module VGEPUtils
 
+
 using OrderedCollections
+
+
+export find_indices_with_sum, compile_to_cranmer_datatype
 
 function fast_sqrt_32(x::Real)
     i = reinterpret(UInt32, x)

@@ -1,6 +1,6 @@
 include("vgep.jl")
 
-using .vectorGEP
+using .VGEP
 using DynamicExpressions
 using OrderedCollections
 

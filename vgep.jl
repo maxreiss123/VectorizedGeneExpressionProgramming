@@ -20,6 +20,10 @@ using Logging
 export run_GEP
 
 
+#=
+**** Base Types*******
+=#
+
 struct Toolbox
     gene_count::Int
     head_len::Int
@@ -55,6 +59,7 @@ mutable struct Chromosome
     fitness::Real
     toolbox::Toolbox
     compiled_function::Any
+    compiled::Bool
     fitness_r2::Real
 
     function Chromosome(genes::Vector{Int}, toolbox::Toolbox, compile::Bool=false)
@@ -62,17 +67,17 @@ mutable struct Chromosome
         obj.genes = genes
         obj.fitness = NaN
         obj.toolbox = toolbox
-        obj.compiled_function = NaN
-	obj.fitness_r2 = 0.0
-        if compile
+	    obj.fitness_r2 = 0.0
+        if compile 
             compile_expression!(obj)
+            obj.compiled = true
         end
         return obj
     end
 end
 
 function compile_expression!(chromosome::Chromosome)
-    if chromosome.compiled_function == NaN
+    if !chromosome.compiled
         expression = _karva_raw(chromosome)
         temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
         expression_tree = compile_to_cranmer_datatype(temp, chromosome.toolbox.symbols, chromosome.toolbox.callbacks,
@@ -80,6 +85,7 @@ function compile_expression!(chromosome::Chromosome)
         chromosome.compiled_function = expression_tree
     end
 end
+
 
 function fitness(chromosome::Chromosome)
     return chromosome.fitness
@@ -104,6 +110,10 @@ function _karva_raw(chromosome::Chromosome)
     return vcat(rolled_indices...)
 end
 
+
+#=
+**** Genetic operators*******
+=#
 
 function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
     head = rand(1:max(maximum(headsyms)), headlen)
@@ -138,6 +148,8 @@ function create_operator_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vecto
     return alpha_operator, beta_operator
 end
 
+
+
 function create_operator_point_one_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vector{Int}, toolbox::Toolbox)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
     beta_operator = zeros(Int, length(gene_seq_beta))
@@ -159,6 +171,11 @@ function create_operator_point_one_masks(gene_seq_alpha::Vector{Int}, gene_seq_b
     
     return alpha_operator, beta_operator
 end
+
+
+#=
+**** Genetic operators*******
+=#
 
 function create_operator_point_two_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vector{Int}, toolbox::Toolbox)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
@@ -257,18 +274,16 @@ function basic_tournament_selection(population::Vector{Chromosome}, tournament_s
 end
 
 
-
-
 function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss_function::Function, 
     crash_value::Real) where T<:Real
     try    
-        if isnan(elem.fitness)    
-	    y_pred = elem.compiled_function(x_data, operators)
-	    return loss_function(y_data, y_pred)
+        if isnan(elem.fitness)
+	        y_pred = elem.compiled_function(x_data, operators)
+	        return loss_function(y_data, y_pred)
         else
             return elem.fitness
         end
-    catch
+    catch e
         return crash_value
     end
 end
@@ -328,14 +343,15 @@ function run_GEP(epochs::Int,
     population = generate_population(population_size, toolbox)
     
     @showprogress for epoch in 1:epochs
+        
         Threads.@threads for i in eachindex(population)
             if isnan(population[i].fitness)
                 population[i].fitness = compute_fitness(population[i], operators, x_data, y_data, loss_fun, 1e32)
             end
         end
-        
 
         sort!(population, by = x -> x.fitness)
+
         if epoch < epochs
             parents = basic_tournament_selection(population, 3, mating_size)
 
@@ -351,7 +367,7 @@ function run_GEP(epochs::Int,
                 next_gen[i] = child1
                 next_gen[i+1] = child2
             end
-            population = vcat(sort(population, by = x -> x.fitness)[1:mating_size], next_gen)
+            population = vcat(population[1:(population_size-mating_size-1)], next_gen)
         if population[1].fitness<epsilon
             break
         end
