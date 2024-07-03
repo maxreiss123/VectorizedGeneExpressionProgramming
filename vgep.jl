@@ -56,11 +56,11 @@ end
 
 mutable struct Chromosome
     genes::Vector{Int}
-    fitness::Real
+    fitness::AbstractFloat
     toolbox::Toolbox
     compiled_function::Any
     compiled::Bool
-    fitness_r2::Real
+    fitness_r2::AbstractFloat
 
     function Chromosome(genes::Vector{Int}, toolbox::Toolbox, compile::Bool=false)
         obj = new()
@@ -91,7 +91,7 @@ function fitness(chromosome::Chromosome)
     return chromosome.fitness
 end
 
-function set_fitness!(chromosome::Chromosome, value::Real)
+function set_fitness!(chromosome::Chromosome, value::AbstractFloat)
     chromosome.fitness = value
 end
 
@@ -276,7 +276,7 @@ end
 
 
 function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss_function::Function, 
-    crash_value::Real; validate::Bool=false) where T<:Real
+    crash_value::Real; validate::Bool=false) where T<:AbstractFloat
     try    
         if isnan(elem.fitness) || validate
 	        y_pred = elem.compiled_function(x_data, operators)
@@ -330,12 +330,12 @@ function run_GEP(epochs::Int,
     y_data::AbstractArray{T},
     gene_connections::Vector{String};
     seed::Int=0,
-    loss_fun_str::String="srsme", 
+    loss_fun_str::String="rmse", 
     mutation_prob::Real=0.9, 
     crossover_prob::Real=0.2, 
     fusion_prob::Real=0.1,
     mating_::Real=0.5,
-    epsilon::Real=1e-24) where T<:AbstractFloat
+    epsilon::Real=0.0) where T<:AbstractFloat
 
     loss_fun::Function = get_loss_function(loss_fun_str)
 
@@ -358,7 +358,7 @@ function run_GEP(epochs::Int,
         
         if (prev_best==-1 || prev_best>population[1].fitness) && epoch % 20 == 0
             eqn, result = optimize_constants(population[1].compiled_function,population[1].fitness ,
-            x_data, y_data, get_loss_function("srsme"), operators)
+            x_data, y_data, get_loss_function("rmse"), operators)
                 population[1].fitness = result
                 population[1].compiled_function = eqn
                 prev_best = result
@@ -387,7 +387,6 @@ function run_GEP(epochs::Int,
         end
     end
     best = sort(population, by = x -> x.fitness)[1]
-    best.fitness = compute_fitness(best,operators, x_data, y_data, get_loss_function("rmse"), 0.0; validate=true)
     best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score"), 0.0; validate=true)
     return best 
     end

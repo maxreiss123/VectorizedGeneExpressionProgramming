@@ -6,7 +6,7 @@ using DynamicExpressions
 using LinearAlgebra
 using Optim
 
-export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
+export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants, minmax_scale
 
     function fast_sqrt_32(x::Real)
         i = reinterpret(UInt32, x)
@@ -107,7 +107,7 @@ export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
 
 
 
-    function minmax_scale!(X::AbstractMatrix{T}; feature_range=(zero(T), one(T))) where T<:AbstractFloat
+    function _minmax_scale!(X::AbstractMatrix{T}; feature_range=(zero(T), one(T))) where T<:AbstractFloat
         min_vals = minimum(X, dims=1)
         max_vals = maximum(X, dims=1)
         range_width = max_vals .- min_vals
@@ -129,7 +129,7 @@ export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
     end
     
     function minmax_scale(X::AbstractMatrix{T}; feature_range=(zero(T), one(T))) where T<:AbstractFloat
-        return minmax_scale!(copy(X); feature_range=feature_range)
+        return _minmax_scale!(copy(X); feature_range=feature_range)
     end
 
 end

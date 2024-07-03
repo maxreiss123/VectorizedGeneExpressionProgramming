@@ -1,9 +1,9 @@
 module LossFunction
-
+using Statistics
 
 export get_loss_function
 
-function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:Real
+function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:AbstractFloat
     len_y = length(y_true)
     y_mean = mean(y_true)
     
@@ -25,7 +25,7 @@ function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:Real
     return r2
 end
 
-function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:AbstractFloat
         d::T = zero(T)
         @assert length(y_true) == length(y_pred)
         @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
@@ -35,7 +35,7 @@ function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) 
         return d/length(y_true)
 end
       
-function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:AbstractFloat
           d::T = zero(T)
           @assert length(y_true) == length(y_pred)
           @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
@@ -45,7 +45,7 @@ function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray
           return abs2(d/length(y_true))
 end
 
-function mean_absolute_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+function mean_absolute_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:AbstractFloat
     d::T = zero(T)
     @assert length(y_true) == length(y_pred)
     @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
@@ -54,7 +54,7 @@ function mean_absolute_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T})
     return d/length(y_true)
 end
 
-function save_root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+function save_root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:AbstractFloat
     d::T = zero(T)
     @assert length(y_true) == length(y_pred)
     @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
