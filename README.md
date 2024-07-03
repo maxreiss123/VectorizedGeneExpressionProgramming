@@ -35,3 +35,14 @@ Within that version, we tokenize the symbols and achieve a genotype representati
 #Remarks
 - Please add some comments
 
+# How to use it?
+- In your terminal, open the JuliaREPL and enter ```]```
+- After the package manager pops up, add the following packages:
+  ```
+  add DynamicExpressions Statistics LinearAlgebra ProgressMeter 
+  ``` 
+- Clone the repository:
+  ```git clone https://github.com/maxreiss123/VectorizedGeneExpressionProgramming.git```
+- Than you can run:
+  ```julia main_min_example.jl```
+
