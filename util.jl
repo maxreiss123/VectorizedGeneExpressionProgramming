@@ -3,6 +3,7 @@ module VGEPUtils
 
 using OrderedCollections
 using DynamicExpressions
+using LinearAlgebra
 using Optim
 
 export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
@@ -27,7 +28,7 @@ export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
         end
     end
 
-    function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::Dict)
+    function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::OrderedDict)
         stack = []
         try
             for elem in reverse(rek_string)
@@ -71,30 +72,64 @@ export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
             end
     end
 
-    function objective(params, node::AbstractNode, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum) where T<:Real
+    function objective(params, node::AbstractNode, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum) where T<:AbstractFloat
         update_constants!(node, params)
         y_pred = node(x_data, operators)
         return loss(y_pred, y_data)
     end
 
-    function optimize_constants(node::AbstractNode, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum; max_iterations::Int=250) where T<:Real
+    function optimize_constants(node::AbstractNode, 
+        initial_fitness::Real,
+        x_data::AbstractArray{T}, 
+        y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum; max_iterations::Int=250) where T<:AbstractFloat
+        
         initial_constants = retrieve_constants_from_node(node)
-        
-        obj(p) = objective(p, node, x_data, y_data, loss, operators)
-        result = optimize(
-            obj,
-            initial_constants,
-            NelderMead(),
-            Optim.Options(
-                show_trace = false,
-                iterations = max_iterations,
-                g_tol = 1e-8
+        try
+            obj(p) = objective(p, node, x_data, y_data, loss, operators)
+            result = optimize(
+                obj,
+                initial_constants,
+                NelderMead(),
+                Optim.Options(
+                    show_trace = false,
+                    iterations = max_iterations,
+                    g_tol = 1e-8
+                )
             )
-        )
+            
+            optimized_constants = Optim.minimizer(result)
+            update_constants!(node, optimized_constants)
+            return node, Optim.minimum(result)
+        catch 
+            return node, initial_fitness
+        end
+    end
+
+
+
+    function minmax_scale!(X::AbstractMatrix{T}; feature_range=(zero(T), one(T))) where T<:AbstractFloat
+        min_vals = minimum(X, dims=1)
+        max_vals = maximum(X, dims=1)
+        range_width = max_vals .- min_vals
         
-        optimized_constants = Optim.minimizer(result)
-        update_constants!(node, optimized_constants)
-        node, Optim.minimum(result)
+        a, b = feature_range
+        scale = (b - a) ./ range_width
+        
+        @inbounds @simd for j in axes(X, 2)
+            if range_width[j] ≈ zero(T)
+                X[:, j] .= (a + b) / 2
+            else
+                @simd for i in axes(X, 1)
+                    X[i, j] = (X[i, j] - min_vals[j]) * scale[j] + a
+                end
+            end
+        end
+        
+        return X
+    end
+    
+    function minmax_scale(X::AbstractMatrix{T}; feature_range=(zero(T), one(T))) where T<:AbstractFloat
+        return minmax_scale!(copy(X); feature_range=feature_range)
     end
 
 end

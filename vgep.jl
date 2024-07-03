@@ -38,10 +38,10 @@ struct Toolbox
     tailsyms::Vector{Int}
     arrity_by_id::OrderedDict
     callbacks::Dict
-    nodes::Dict
+    nodes::OrderedDict
     
     function Toolbox(gene_count::Int, head_len::Int, symbols::OrderedDict{String, Int64}, gene_connections::Vector{String}, mutation_prob::Real, 
-        crossover_prob::Real, fusion_prob::Real, callbacks::Dict, nodes::Dict)
+        crossover_prob::Real, fusion_prob::Real, callbacks::Dict, nodes::OrderedDict)
 	    char_to_id = OrderedDict(elem => index for (index, elem) in enumerate(keys(symbols)))
 	    id_to_char = OrderedDict(index => elem for (elem, index) in char_to_id)
 	    headsyms = [char_to_id[key] for (key, arity) in symbols if arity != 0]
@@ -276,9 +276,9 @@ end
 
 
 function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss_function::Function, 
-    crash_value::Real) where T<:Real
+    crash_value::Real; validate::Bool=false) where T<:Real
     try    
-        if isnan(elem.fitness)
+        if isnan(elem.fitness) || validate
 	        y_pred = elem.compiled_function(x_data, operators)
 	        return loss_function(y_data, y_pred)
         else
@@ -293,6 +293,14 @@ end
 function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::Toolbox)
     child1, child2 = parent1, parent2
 
+    if rand() < toolbox.crossover_prob*1.5
+        child1, child2 = gene_one_point_cross_over(child1, child2)
+    end
+
+    if rand() < toolbox.crossover_prob
+        child1, child2 = gene_two_point_cross_over(child1, child2)
+    end
+
     if rand() < toolbox.mutation_prob
         child1, child2 = gene_mutation(child1, child2)
     end
@@ -306,12 +314,6 @@ function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::T
     if rand() < toolbox.fusion_prob
         child1, child2 = gene_fussion(child1, child2)
     end
-    if rand() < toolbox.crossover_prob
-        child1, child2 = gene_one_point_cross_over(child1, child2)
-    end
-    if rand() < toolbox.crossover_prob
-        child1, child2 = gene_two_point_cross_over(child1, child2)
-    end
 
     return child1, child2
     end
@@ -323,19 +325,19 @@ function run_GEP(epochs::Int,
     symbols::OrderedDict,
     operators::OperatorEnum,
     callbacks::Dict,
-    nodes::Dict,
+    nodes::OrderedDict,
     x_data::AbstractArray{T},
     y_data::AbstractArray{T},
     gene_connections::Vector{String};
     seed::Int=0,
-    loss_fun_str::String="rmse", 
-    mutation_prob::Real=0.5, 
-    crossover_prob::Real=0.4, 
-    fusion_prob::Real=0.3,
+    loss_fun_str::String="srsme", 
+    mutation_prob::Real=0.9, 
+    crossover_prob::Real=0.2, 
+    fusion_prob::Real=0.1,
     mating_::Real=0.5,
-    epsilon::Real=1e-13) where T<:Real
+    epsilon::Real=1e-24) where T<:AbstractFloat
 
-    loss_fun::Function = LossFunction.get_loss_function(loss_fun_str)
+    loss_fun::Function = get_loss_function(loss_fun_str)
 
     Random.seed!(seed)
     mating_size = Int(ceil(population_size*mating_))
@@ -354,10 +356,12 @@ function run_GEP(epochs::Int,
 
         sort!(population, by = x -> x.fitness)
         
-        if prev_best==-1 || prev_best>population[1].fitness
-        eqn, result = optimize_constants(population[1].compiled_function, x_data, y_data, loss_fun, operators)
-            population[1].fitness = result
-            population[1].compiled_function = eqn
+        if (prev_best==-1 || prev_best>population[1].fitness) && epoch % 20 == 0
+            eqn, result = optimize_constants(population[1].compiled_function,population[1].fitness ,
+            x_data, y_data, get_loss_function("srsme"), operators)
+                population[1].fitness = result
+                population[1].compiled_function = eqn
+                prev_best = result
         end
 
         if epoch < epochs
@@ -383,7 +387,8 @@ function run_GEP(epochs::Int,
         end
     end
     best = sort(population, by = x -> x.fitness)[1]
-    best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score"), 0.0)
+    best.fitness = compute_fitness(best,operators, x_data, y_data, get_loss_function("rmse"), 0.0; validate=true)
+    best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score"), 0.0; validate=true)
     return best 
     end
 

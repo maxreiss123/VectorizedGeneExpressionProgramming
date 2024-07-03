@@ -21,7 +21,7 @@ callbacks = Dict(
         "*" => (*),
         "+" => (+)
 )
-nodes = Dict(
+nodes = OrderedDict(
     "x_0" => Node(; feature=1),
     "x_1" => Node(; feature=2),
     "2" => 2,

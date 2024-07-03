@@ -26,8 +26,8 @@ function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:Real
 end
 
 function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
-
         d::T = zero(T)
+        @assert length(y_true) == length(y_pred)
         @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
               temp = (y_true[i]-y_pred[i])
               d += temp*temp
@@ -37,19 +37,41 @@ end
       
 function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
           d::T = zero(T)
+          @assert length(y_true) == length(y_pred)
           @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
                 temp = (y_true[i]-y_pred[i])
                 d += temp*temp
           end
           return abs2(d/length(y_true))
 end
-    
+
+function mean_absolute_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+    d::T = zero(T)
+    @assert length(y_true) == length(y_pred)
+    @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
+        d += abs(y_true[i]-y_pred[i])
+    end
+    return d/length(y_true)
+end
+
+function save_root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
+    d::T = zero(T)
+    @assert length(y_true) == length(y_pred)
+    @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
+          temp = (y_true[i]-y_pred[i])/(abs(y_true[i])+eps(T))
+          d += temp*temp
+    end
+    return abs2(d/length(y_true))
+end
+
 
 
 loss_functions = Dict{String, Function}(
     "r2_score" => r2_score,
     "mse" => mean_squared_error,
-    "rmse" => root_mean_squared_error
+    "rmse" => root_mean_squared_error,
+    "mae" => mean_absolute_error,
+    "srsme" => save_root_mean_squared_error
     )
 
 function get_loss_function(name::String)
