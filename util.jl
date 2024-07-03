@@ -2,18 +2,19 @@ module VGEPUtils
 
 
 using OrderedCollections
+using DynamicExpressions
+using Optim
+
+export find_indices_with_sum, compile_to_cranmer_datatype, optimize_constants
+
+    function fast_sqrt_32(x::Real)
+        i = reinterpret(UInt32, x)
+        i = 0x1fbd1df5 + (i >> 1)
+        return reinterpret(Real, i)
+    end
 
 
-export find_indices_with_sum, compile_to_cranmer_datatype
-
-function fast_sqrt_32(x::Real)
-    i = reinterpret(UInt32, x)
-    i = 0x1fbd1df5 + (i >> 1)
-    return reinterpret(Real, i)
- end
-
-
-function find_indices_with_sum(arr::Vector{Int}, target_sum::Int, num_indices::Int)
+    function find_indices_with_sum(arr::Vector{Int}, target_sum::Int, num_indices::Int)
         if arr[1] == -1
             return [1]
         end
@@ -26,7 +27,7 @@ function find_indices_with_sum(arr::Vector{Int}, target_sum::Int, num_indices::I
         end
     end
 
-function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::Dict)
+    function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::Dict)
         stack = []
         try
             for elem in reverse(rek_string)
@@ -50,5 +51,50 @@ function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict,
         return last(stack)
     end
 
+    function retrieve_constants_from_node(node::AbstractNode)
+        constants = Float64[]
+        for op in node
+            if op isa AbstractNode && op.degree == 0 && op.constant
+                push!(constants, convert(Float64, op.val))
+            end
+        end
+        constants
+    end
+    
+    function update_constants!(node::AbstractNode, new_constants::Vector{Float64})
+            constant_index = 1
+            for op in node
+                if op isa AbstractNode && op.degree == 0 && op.constant
+                    op.val = new_constants[constant_index]
+                    constant_index += 1
+                end
+            end
+    end
+
+    function objective(params, node::AbstractNode, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum) where T<:Real
+        update_constants!(node, params)
+        y_pred = node(x_data, operators)
+        return loss(y_pred, y_data)
+    end
+
+    function optimize_constants(node::AbstractNode, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss::Function, operators::OperatorEnum; max_iterations::Int=250) where T<:Real
+        initial_constants = retrieve_constants_from_node(node)
+        
+        obj(p) = objective(p, node, x_data, y_data, loss, operators)
+        result = optimize(
+            obj,
+            initial_constants,
+            NelderMead(),
+            Optim.Options(
+                show_trace = false,
+                iterations = max_iterations,
+                g_tol = 1e-8
+            )
+        )
+        
+        optimized_constants = Optim.minimizer(result)
+        update_constants!(node, optimized_constants)
+        node, Optim.minimum(result)
+    end
 
 end

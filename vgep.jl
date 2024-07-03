@@ -263,6 +263,7 @@ function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb::Rea
     return child_1, child_2
 end
 
+
 function basic_tournament_selection(population::Vector{Chromosome}, tournament_size::Int, number_of_winners::Int)
     selected = []
     for _ in 1:number_of_winners
@@ -341,7 +342,8 @@ function run_GEP(epochs::Int,
     toolbox = Toolbox(gene_count, head_len, symbols, gene_connections, mutation_prob, crossover_prob, 
     fusion_prob,callbacks, nodes)
     population = generate_population(population_size, toolbox)
-    
+    prev_best = -1
+
     @showprogress for epoch in 1:epochs
         
         Threads.@threads for i in eachindex(population)
@@ -351,6 +353,12 @@ function run_GEP(epochs::Int,
         end
 
         sort!(population, by = x -> x.fitness)
+        
+        if prev_best==-1 || prev_best>population[1].fitness
+        eqn, result = optimize_constants(population[1].compiled_function, x_data, y_data, loss_fun, operators)
+            population[1].fitness = result
+            population[1].compiled_function = eqn
+        end
 
         if epoch < epochs
             parents = basic_tournament_selection(population, 3, mating_size)
