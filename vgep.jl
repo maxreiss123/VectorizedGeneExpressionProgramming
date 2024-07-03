@@ -1,5 +1,11 @@
+module VGEP 
 
-module vectorGEP 
+include("losses.jl")
+include("util.jl")
+
+using .LossFunction
+using .VGEPUtils
+
 
 using Random
 using Statistics
@@ -10,99 +16,8 @@ using DynamicExpressions
 using Logging
 
 
-logger = SimpleLogger(open("error.log", "a"))
-global_logger(logger)
 
-Logging.disable_logging(Logging.Info)
 export run_GEP
-
-
-function r2_score(y_true::Vector{T}, y_pred::Vector{T}) where T<:Real
-    len_y = length(y_true)
-    y_mean = mean(y_true)
-    
-
-    ss_total::T = zero(T)
-    @inbounds @simd for i in 1:len_y
-	temp = y_true[i]-y_mean
-        ss_total += temp*temp
-    end
-
-    ss_residual::T = zero(T)
-    @inbounds @simd for i in 1:len_y
-	temp = y_true[i] - y_pred[i]
-	ss_residual += temp*temp
-    end
-    
-    r2 = 1.0 - (ss_residual / ss_total)
-    
-    return r2
-end
-
-
-function fast_sqrt_32(x::Real)
-    i = reinterpret(UInt32, x)
-    i = 0x1fbd1df5 + (i >> 1)
-    return reinterpret(Real, i)
-end
-
-function find_indices_with_sum(arr, target_sum, num_indices)
-    if arr[1] == -1
-        return [1]
-    end
-    cum_sum = cumsum(arr)
-    indices = findall(x -> x == target_sum, cum_sum)
-    if length(indices) >= num_indices
-	return indices[1:num_indices]
-    else
-        return [1]
-    end
-end
-
-
-function compile_to_function_string(rek_string, arity_map)
-    stack = []
-    for elem in reverse(rek_string)
-        if get(arity_map, elem, 0) == 2
-            op1 = pop!(stack)
-            op2 = pop!(stack)
-            push!(stack, "($op1$elem$op2)")
-        elseif get(arity_map, elem, 0) == 1
-            op1 = pop!(stack)
-            push!(stack, "$elem($op1)")
-        elseif get(arity_map, elem, 0) == -1
-            op1 = pop!(stack)
-            push!(stack, "($op1)$elem")
-        else
-            push!(stack, elem)
-        end
-    end
-    return last(stack)
-end
-
-function compile_to_cranmer_datatype(rek_string::Vector, arity_map::OrderedDict, callbacks::Dict, nodes::Dict)
-    stack = []
-    try
-        for elem in reverse(rek_string)
-            if get(arity_map, elem, 0) == 2
-                op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-                op2 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-                ops = callbacks[elem]
-                push!(stack, ops(op1,op2))
-            elseif get(arity_map, elem, 0) == 1
-                op1 = (temp = pop!(stack); temp isa String ? nodes[temp] : temp)
-                ops = callbacks[elem]
-                push!(stack, ops(op1))
-            else
-                push!(stack, elem)
-            end
-        end
-    catch e
-    	#@error "An error occurred during function compile "
-    end
-
-    return last(stack)
-end
 
 
 struct Toolbox
@@ -139,7 +54,6 @@ mutable struct Chromosome
     genes::Vector{Int}
     fitness::Real
     toolbox::Toolbox
-    expression::String
     compiled_function::Any
     fitness_r2::Real
 
@@ -148,7 +62,7 @@ mutable struct Chromosome
         obj.genes = genes
         obj.fitness = NaN
         obj.toolbox = toolbox
-        obj.expression = ""
+        obj.compiled_function = NaN
 	obj.fitness_r2 = 0.0
         if compile
             compile_expression!(obj)
@@ -158,7 +72,7 @@ mutable struct Chromosome
 end
 
 function compile_expression!(chromosome::Chromosome)
-    if chromosome.expression == ""
+    if chromosome.compiled_function == NaN
         expression = _karva_raw(chromosome)
         temp = [chromosome.toolbox.id_to_char[elem] for elem in expression]
         expression_tree = compile_to_cranmer_datatype(temp, chromosome.toolbox.symbols, chromosome.toolbox.callbacks,
@@ -190,14 +104,14 @@ function _karva_raw(chromosome::Chromosome)
     return vcat(rolled_indices...)
 end
 
-#TODO: optimize
+
 function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
     head = rand(1:max(maximum(headsyms)), headlen)
     tail = rand(maximum(headsyms)+1:maximum(tailsyms), headlen + 1)
     return vcat(head, tail)
 end
 
-#TODO: optimize
+
 function generate_chromosome(toolbox::Toolbox)
     connectors = rand(1:maximum(toolbox.gene_connections), toolbox.gene_count - 1)
     genes = vcat([generate_gene(toolbox.headsyms, toolbox.tailsyms, toolbox.head_len) for _ in 1:toolbox.gene_count]...)
@@ -214,7 +128,7 @@ function generate_population(number::Int, toolbox::Toolbox)
 end
 
 
-function create_operator_masks(gene_seq_alpha, gene_seq_beta, pb=0.2)
+function create_operator_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vector{Int}, pb::Real=0.2)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
     beta_operator = zeros(Int, length(gene_seq_beta))
     indices_alpha = rand(1:length(gene_seq_alpha), min(round(Int,(pb * length(gene_seq_alpha))), length(gene_seq_alpha)))
@@ -224,7 +138,7 @@ function create_operator_masks(gene_seq_alpha, gene_seq_beta, pb=0.2)
     return alpha_operator, beta_operator
 end
 
-function create_operator_point_one_masks(gene_seq_alpha, gene_seq_beta, toolbox)
+function create_operator_point_one_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vector{Int}, toolbox::Toolbox)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
     beta_operator = zeros(Int, length(gene_seq_beta))
     head_len = toolbox.head_len
@@ -246,7 +160,7 @@ function create_operator_point_one_masks(gene_seq_alpha, gene_seq_beta, toolbox)
     return alpha_operator, beta_operator
 end
 
-function create_operator_point_two_masks(gene_seq_alpha, gene_seq_beta, toolbox)
+function create_operator_point_two_masks(gene_seq_alpha::Vector{Int}, gene_seq_beta::Vector{Int}, toolbox::Toolbox)
     alpha_operator = zeros(Int, length(gene_seq_alpha))
     beta_operator = zeros(Int, length(gene_seq_beta))
     head_len = toolbox.head_len
@@ -332,8 +246,6 @@ function gene_mutation(chromosome1::Chromosome, chromosome2::Chromosome, pb::Rea
     return child_1, child_2
 end
 
-
-
 function basic_tournament_selection(population::Vector{Chromosome}, tournament_size::Int, number_of_winners::Int)
     selected = []
     for _ in 1:number_of_winners
@@ -344,50 +256,22 @@ function basic_tournament_selection(population::Vector{Chromosome}, tournament_s
     return selected
 end
 
-function mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
-
-  d::T = zero(T)
-  @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
-        temp = (y_true[i]-y_pred[i])
-        d += temp*temp
-  end
-  return d/length(y_true)
-end
-
-function root_mean_squared_error(y_true::AbstractArray{T}, y_pred::AbstractArray{T}) where T<:Real
-    d::T = zero(T)
-    @fastmath @inbounds @simd for i in eachindex(y_true, y_pred)
-          temp = (y_true[i]-y_pred[i])
-          d += temp*temp
-    end
-    return abs2(d/length(y_true))
-  end
 
 
-function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
+
+function compute_fitness(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}, loss_function::Function, 
+    crash_value::Real) where T<:Real
     try    
         if isnan(elem.fitness)    
 	    y_pred = elem.compiled_function(x_data, operators)
-	    return root_mean_squared_error(y_data, y_pred)
+	    return loss_function(y_data, y_pred)
         else
             return elem.fitness
         end
-    catch e
-        #@error "Something went wrong in compute fitness" exception=(e, catch_backtrace())
-        return 10e32
+    catch
+        return crash_value
     end
 end
-
-function compute_fitness_r2(elem::Chromosome, operators::OperatorEnum, x_data::AbstractArray{T}, y_data::AbstractArray{T}) where T<:Real
-    try
-    	y_pred = elem.compiled_function(x_data, operators)
-       	return r2_score(y_data, y_pred)
-    catch e
-        #@error "Something went wrong in compute fitness" exception=(e, catch_backtrace())
-        return 0
-    end
-end
-
 
 
 function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::Toolbox)
@@ -414,7 +298,7 @@ function genetic_operations(parent1::Chromosome, parent2::Chromosome, toolbox::T
     end
 
     return child1, child2
-end
+    end
 
 function run_GEP(epochs::Int, 
     population_size::Int, 
@@ -428,13 +312,14 @@ function run_GEP(epochs::Int,
     y_data::AbstractArray{T},
     gene_connections::Vector{String};
     seed::Int=0,
-    error_fun::String="mae", 
+    loss_fun_str::String="rmse", 
     mutation_prob::Real=0.5, 
     crossover_prob::Real=0.4, 
     fusion_prob::Real=0.3,
     mating_::Real=0.5,
     epsilon::Real=1e-13) where T<:Real
 
+    loss_fun::Function = LossFunction.get_loss_function(loss_fun_str)
 
     Random.seed!(seed)
     mating_size = Int(ceil(population_size*mating_))
@@ -445,7 +330,7 @@ function run_GEP(epochs::Int,
     @showprogress for epoch in 1:epochs
         Threads.@threads for i in eachindex(population)
             if isnan(population[i].fitness)
-                population[i].fitness = compute_fitness(population[i], operators, x_data, y_data)
+                population[i].fitness = compute_fitness(population[i], operators, x_data, y_data, loss_fun, 1e32)
             end
         end
         
@@ -474,8 +359,8 @@ function run_GEP(epochs::Int,
         end
     end
     best = sort(population, by = x -> x.fitness)[1]
-    best.fitness_r2 = compute_fitness_r2(best,operators, x_data, y_data)
+    best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score"), 0.0)
     return best 
-end
+    end
 
 end
