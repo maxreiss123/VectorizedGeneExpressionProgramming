@@ -330,11 +330,11 @@ function run_GEP(epochs::Int,
     y_data::AbstractArray{T},
     gene_connections::Vector{String};
     seed::Int=0,
-    loss_fun_str::String="rmse", 
-    mutation_prob::Real=0.9, 
-    crossover_prob::Real=0.2, 
+    loss_fun_str::String="mae", 
+    mutation_prob::Real=1.0, 
+    crossover_prob::Real=0.3, 
     fusion_prob::Real=0.1,
-    mating_::Real=0.5,
+    mating_::Real=0.7,
     epsilon::Real=0.0) where T<:AbstractFloat
 
     loss_fun::Function = get_loss_function(loss_fun_str)
@@ -358,7 +358,7 @@ function run_GEP(epochs::Int,
         
         if (prev_best==-1 || prev_best>population[1].fitness) && epoch % 20 == 0
             eqn, result = optimize_constants(population[1].compiled_function,population[1].fitness ,
-            x_data, y_data, get_loss_function("rmse"), operators)
+            x_data, y_data, get_loss_function("srsme"), operators)
                 population[1].fitness = result
                 population[1].compiled_function = eqn
                 prev_best = result
@@ -387,7 +387,7 @@ function run_GEP(epochs::Int,
         end
     end
     best = sort(population, by = x -> x.fitness)[1]
-    best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score"), 0.0; validate=true)
+    best.fitness_r2 = compute_fitness(best,operators, x_data, y_data, get_loss_function("r2_score_f"), 0.0; validate=true)
     return best 
     end
 
