@@ -21,7 +21,8 @@ Within that version, we tokenize the symbols and achieve a genotype representati
   - 1e6 -> Remark: initialization takes a while
   - 1e7 -> Remark: initialization takes a while
 
-# Todo 
+# Todo
+- Try to enforce the constraint to max work on float32
 - Inner approximation of the constants with perturbation and the application of the gene fusion operator
 - Random application of genetic operators
 - Conversion to Julia - (Needs to be tested/debugged)
