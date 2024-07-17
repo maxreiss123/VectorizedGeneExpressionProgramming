@@ -101,7 +101,7 @@ function _karva_raw(chromosome::Chromosome)
     genes = chromosome.genes[(chromosome.toolbox.gene_count):end]
     arity_gene_ = map(x -> chromosome.toolbox.arrity_by_id[x], genes)
     rolled_indices = [connectionsym]
-    for i in 1:(gene_len-1):length(arity_gene_)-gene_len-1
+    for i in 1:(gene_len-1):length(arity_gene_)-gene_len
         window = arity_gene_[i:i + gene_len]
         window[2:length(window)] .-=1
         indices = find_indices_with_sum(window, 0, 1)
@@ -116,8 +116,8 @@ end
 =#
 
 function generate_gene(headsyms::Vector{Int}, tailsyms::Vector{Int}, headlen::Int)
-    head = rand(1:max(maximum(headsyms)), headlen)
-    tail = rand(maximum(headsyms)+1:maximum(tailsyms), headlen + 1)
+    head = rand(vcat(headsyms,tailsyms), headlen)
+    tail = rand(tailsyms, headlen + 1)
     return vcat(head, tail)
 end
 
