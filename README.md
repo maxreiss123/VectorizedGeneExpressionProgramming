@@ -4,11 +4,6 @@ Dealing with high-dimensional data often causes evolutionary methods to struggle
 At a certain point, the algorithm faces a high workload caused by the internal representation of the objects. Object-orientated data structures allow a highly readable and logical structure. Still, the overhead of computational time and memory allocations becomes non-negligible when it comes to many replication procedures that utilize genetic operators. 
 
 Within that version, we tokenize the symbols and achieve a genotype representation where arithmetic operations can be applied easily. The given repo implements a version in Julia, whereby the Gene-Expression-Programming [1] serves as a role model. 
-
-
-- Velocity check: 200.000 datapoints, 1000 candidate solutions, mating size 0.4, four threads
-  - Julia: 69s
-  - Python: 635s
  
 - Amount of data points tested without issues - time scales linear
   - 1e5
@@ -22,16 +17,16 @@ Within that version, we tokenize the symbols and achieve a genotype representati
   - 1e7 -> Remark: initialization takes a while
 
 # Todo
-- Try to enforce the constraint to max work on float32
-- Inner approximation of the constants with perturbation and the application of the gene fusion operator
-- Random application of genetic operators
-- Conversion to Julia - (Needs to be tested/debugged)
-- Implementing of learnable weights for the genetic operators
-- Implementation of an attention-based mutation operator
-- Automatic gene-len scaling
-- Further operators like RIS, IS
-- Further selection mechanisms
-- NSGA2
+[] Try to enforce the constraint to max work on float32
+[x] Inner approximation of the constants with perturbation and the application of the gene fusion operator
+[x] Random application of genetic operators
+[] Conversion to Julia - (Needs to be tested/debugged)
+[] Implementing of learnable weights for the genetic operators
+[] Implementation of an attention-based mutation operator
+[] Automatic gene-len scaling
+[x] Further operators like RIS, IS
+[] Further selection mechanisms
+[x] NSGA2
 
 #Remarks
 - Please add some comments
