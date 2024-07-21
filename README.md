@@ -17,16 +17,16 @@ Within that version, we tokenize the symbols and achieve a genotype representati
   - 1e7 -> Remark: initialization takes a while
 
 # Todo
-[] Try to enforce the constraint to max work on float32
-[x] Inner approximation of the constants with perturbation and the application of the gene fusion operator
-[x] Random application of genetic operators
-[] Conversion to Julia - (Needs to be tested/debugged)
-[] Implementing of learnable weights for the genetic operators
-[] Implementation of an attention-based mutation operator
-[] Automatic gene-len scaling
-[x] Further operators like RIS, IS
-[] Further selection mechanisms
-[x] NSGA2
+- [ ] Try to enforce the constraint to max work on float32
+- [x] Inner approximation of the constants with perturbation and the application of the gene fusion operator
+- [x] Random application of genetic operators
+- [ ] Conversion to Julia - (Needs to be tested/debugged)
+- [ ] Implementing learnable weights for the genetic operators
+- [ ] Implementation of an attention-based mutation operator
+- [ ] Automatic gene-len scaling
+- [x] Further operators like RIS, IS
+- [ ] Further selection mechanisms
+- [x] NSGA2
 
 #Remarks
 - Please add some comments
