@@ -101,7 +101,7 @@ function _karva_raw(chromosome::Chromosome)
     genes = chromosome.genes[(chromosome.toolbox.gene_count):end]
     arity_gene_ = map(x -> chromosome.toolbox.arrity_by_id[x], genes)
     rolled_indices = [connectionsym]
-    for i in 1:(gene_len-1):length(arity_gene_)-gene_len-1
+    for i in 1:(gene_len-1):length(arity_gene_)-gene_len+1
         window = arity_gene_[i:i + gene_len]
         window[2:length(window)] .-=1
         indices = find_indices_with_sum(window, 0, 1)
@@ -265,12 +265,14 @@ end
 
 
 function basic_tournament_selection(population::Vector{Chromosome}, tournament_size::Int, number_of_winners::Int)
-    selected = []
-    for _ in 1:number_of_winners
-        contenders = rand(population, tournament_size)
+    selected = Vector{Chromosome}(undef, number_of_winners)
+    valid_population = filter(x -> isfinite(x.fitness), population)
+    Threads.@threads for index in 1:number_of_winners-1
+        contenders = rand(valid_population, tournament_size)
         winner = reduce((best, contender) -> contender.fitness < best.fitness ? contender : best, contenders)
-        push!(selected, winner)
+        selected[index] = winner
     end
+    selected[end] = population[1]
     return selected
 end
 
